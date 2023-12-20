@@ -275,9 +275,10 @@ pub const CairoVM = struct {
             return CairoVMError.InstructionEncodingError;
         };
 
+        std.debug.print("pc: {any}\nfp:{} \n encoded instruction: {any}\n\n", .{self.run_context.pc.*, self.run_context.fp.*,                                                           encoded_instruction_u64});        
         // Then, we decode the instruction.
         const instruction = try instructions.decode(encoded_instruction_u64);
-
+        
         // ************************************************************
         // *                    EXECUTE                               *
         // ************************************************************
@@ -349,17 +350,17 @@ pub const CairoVM = struct {
         allocator: Allocator,
         instruction: *const instructions.Instruction,
     ) !OperandsResult {
-        std.debug.print("COMPUTING OPERANDS FOR INSTRUCTION: {any}\n", .{instruction});
+        std.debug.print("COMPUTING OPERANDS FOR INSTRUCTION: {any}\n\n", .{instruction});
         var op_res = OperandsResult.default();
         op_res.res = null;
 
         op_res.dst_addr = try self.run_context.computeDstAddr(instruction);
         const dst_op = self.segments.memory.get(op_res.dst_addr);
-
+        std.debug.print("initial dst op lookup: {any}\n", .{dst_op});
         op_res.op_0_addr = try self.run_context.computeOp0Addr(instruction);
 
         const op_0_op = self.segments.memory.get(op_res.op_0_addr);
-
+        std.debug.print("op_0_addr:{any}\n\nop_0_op: {any}\n", .{op_res.op_0_addr, op_0_op});
         op_res.op_1_addr = try self.run_context.computeOp1Addr(
             instruction,
             op_0_op,
@@ -406,13 +407,29 @@ pub const CairoVM = struct {
             op_res.dst = try self.deduceDst(instruction, op_res.res);
         }
 
-        std.debug.print("COMPUTED op_res dst: {any}\n", .{op_res.dst});
-        std.debug.print("COMPUTED op_res op_0: {any}\n", .{op_res.op_0});
-        std.debug.print("COMPUTED op_res op_1: {any}\n", .{op_res.op_1});
-        std.debug.print("COMPUTED op_res res: {any}\n", .{op_res.res});
+        if (op_res.dst.tryIntoFelt() catch null) |value| {
+            std.debug.print("COMPUTED op_res dst: {any}\n", .{value.toInteger()});
+        } else {
+            std.debug.print("COMPUTED op_res dst: {any}\n", .{op_res.dst});
+        }
+        if (op_res.op_0.tryIntoFelt() catch null) |value| {
+            std.debug.print("COMPUTED op_res op_0: {any}\n", .{value.toInteger()});
+        } else {
+            std.debug.print("COMPUTED op_res op_0: {any}\n", .{op_res.op_0});            
+        }
+        if (op_res.op_1.tryIntoFelt() catch null) |value| {
+            std.debug.print("COMPUTED op_res op_1: {any}\n", .{value.toInteger()});
+        } else {
+            std.debug.print("COMPUTED op_res op_1: {any}\n", .{op_res.op_1});
+        }
+                                                           
+        if (op_res.res) |maybe_rel|
+            if (maybe_rel.tryIntoFelt() catch null) |value| std.debug.print("COMPUTED op_res res: {any}\n", .{value.toInteger()});
+
+        std.debug.print("COMPUTED op_res dst addr: {any}\n\n", .{op_res.dst_addr});        
         std.debug.print("COMPUTED op_res op_0 addr: {any}\n", .{op_res.op_0_addr});
         std.debug.print("COMPUTED op_res op_1 addr: {any}\n", .{op_res.op_1_addr});
-        std.debug.print("COMPUTED op_res dst addr: {any}\n", .{op_res.dst_addr});
+
         return op_res;
     }
 
@@ -437,6 +454,15 @@ pub const CairoVM = struct {
         dst: *const ?MaybeRelocatable,
         op1: *const ?MaybeRelocatable,
     ) !MaybeRelocatable {
+        std.debug.print("enter `computeOp0Deductions`\n op_0_addr: {any}\ndeducedMemoryCell lookup: {any}\n deduceOp0 res:{any}\n\n", .{
+            op_0_addr,
+            self.deduceMemoryCell(allocator, op_0_addr),
+            (try self.deduceOp0(
+            instruction,
+            dst,
+            op1,
+            )).op_0,
+        });
         const op0_op = try self.deduceMemoryCell(allocator, op_0_addr) orelse (try self.deduceOp0(
             instruction,
             dst,
